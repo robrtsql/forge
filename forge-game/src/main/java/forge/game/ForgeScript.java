@@ -257,6 +257,12 @@ public class ForgeScript {
             return sa.isForetelling();
         } else if (property.equals("Foretold")) {
             return sa.isForetold();
+        } else if (property.equals("Plotting")) {
+            return sa.isPlotting();
+        } else if (property.equals("Outlast")) {
+            return sa.isOutlast();
+        } else if (property.equals("Modal")) {
+            return sa.getApi() == ApiType.Charm;
         } else if (property.equals("ClassLevelUp")) {
             return sa.getApi() == ApiType.ClassLevelUp;
         } else if (property.equals("Daybound")) {
@@ -334,7 +340,7 @@ public class ForgeScript {
             String unescaped = k[1].replace("~", "+");
             boolean found = false;
             for (GameObject o : AbilityUtils.getDefinedObjects(source, unescaped, spellAbility)) {
-                if (sa.isTargeting(o)) {
+                if (sa.getRootAbility().isTargeting(o)) {
                     found = true;
                     break;
                 }

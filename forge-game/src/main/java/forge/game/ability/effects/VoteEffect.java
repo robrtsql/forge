@@ -57,8 +57,9 @@ public class VoteEffect extends SpellAbilityEffect {
         final Card host = sa.getHostCard();
         final Game game = host.getGame();
         final Player activator = sa.getActivatingPlayer();
-        final boolean secret = sa.hasParam("Secret");
-        final boolean other = sa.hasParam("VotePlayer") & sa.getParam("VotePlayer").equals("Other");
+
+        final boolean secret = sa.hasParam("Secretly");
+        final boolean other = sa.hasParam("VotePlayer") && sa.getParam("VotePlayer").equals("Other");
         final StringBuilder record = new StringBuilder();
 
         if (sa.hasParam("VoteType")) {

@@ -16,9 +16,9 @@ public enum AlternativeCost {
     MTMtE, // More Than Meets the Eye (Transformers Universes Beyond)
     Mutate,
     Offering,
-    Outlast, // ActivatedAbility
     Overload,
     Prowl,
+    Plotted,
     Spectacle,
     Surge;
 

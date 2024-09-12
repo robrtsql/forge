@@ -111,7 +111,7 @@ public final class GameActionUtil {
 
             for (CardPlayOption o : source.mayPlay(activator)) {
                 // do not appear if it can be cast with SorcerySpeed
-                if (o.getAbility().hasParam("MayPlayNotSorcerySpeed") && activator.couldCastSorcery(sa)) {
+                if (o.getAbility().hasParam("MayPlayNotSorcerySpeed") && activator.canCastSorcery()) {
                     continue;
                 }
                 // non basic are only allowed if PayManaCost is yes
@@ -236,7 +236,7 @@ public final class GameActionUtil {
                         alternatives.add(flashback);
                     } else if (keyword.startsWith("Foretell")) {
                         // Foretell cast only from Exile
-                        if (!source.isInZone(ZoneType.Exile) || !source.isForetold() || source.isForetoldThisTurn() ||
+                        if (!source.isInZone(ZoneType.Exile) || !source.isForetold() || source.enteredThisTurn() ||
                                 !activator.equals(source.getOwner())) {
                             continue;
                         }
@@ -259,7 +259,7 @@ public final class GameActionUtil {
 
                 // foretell by external source
                 if (source.isForetoldCostByEffect() && source.isInZone(ZoneType.Exile) && activator.equals(source.getOwner())
-                        && source.isForetold() && !source.isForetoldThisTurn() && !source.getManaCost().isNoCost()) {
+                        && source.isForetold() && !source.enteredThisTurn() && !source.getManaCost().isNoCost()) {
                     // Its foretell cost is equal to its mana cost reduced by {2}.
                     final SpellAbility foretold = sa.copy(activator);
                     Integer reduced = Math.min(2, sa.getPayCosts().getCostMana().getMana().getGenericCost());
@@ -268,6 +268,14 @@ public final class GameActionUtil {
                     foretold.getRestrictions().setZone(ZoneType.Exile);
                     foretold.putParam("AfterDescription", "(Foretold)");
                     alternatives.add(foretold);
+                }
+
+                if (activator.canCastSorcery() && source.isPlotted() && source.isInZone(ZoneType.Exile) && activator.equals(source.getOwner()) && !source.enteredThisTurn()) {
+                    final SpellAbility plotted = sa.copyWithNoManaCost(activator);
+                    plotted.setAlternativeCost(AlternativeCost.Plotted);
+                    plotted.getRestrictions().setZone(ZoneType.Exile);
+                    plotted.putParam("AfterDescription", "(Plotted)");
+                    alternatives.add(plotted);
                 }
 
                 // some needs to check after ability was put on the stack
@@ -867,6 +875,13 @@ public final class GameActionUtil {
     public static void rollbackAbility(SpellAbility ability, final Zone fromZone, final int zonePosition, CostPayment payment, Card oldCard) {
         // cancel ability during target choosing
         final Game game = ability.getActivatingPlayer().getGame();
+
+        if (game.restoreGameState()) {
+            // If we're able to restore the whole game state when rolling back an ability don't try to manually roll back
+            System.out.println("Restored state from snapshot! Rolled back: " + ability.getHostCard().getName() + " - " + ability.getActivatingPlayer());
+
+            return;
+        }
 
         if (fromZone != null) { // and not a copy
             // might have been an alternative lki host

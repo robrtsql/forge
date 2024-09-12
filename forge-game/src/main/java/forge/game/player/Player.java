@@ -99,6 +99,7 @@ public class Player extends GameEntity implements Comparable<Player> {
     private int lifeGainedThisTurn;
     private int lifeGainedTimesThisTurn;
     private int lifeGainedByTeamThisTurn;
+    private int committedCrimeThisTurn;
     private int numManaShards;
     private int numPowerSurgeLands;
     private int numLibrarySearchedOwn; //The number of times this player has searched his library
@@ -1329,6 +1330,12 @@ public class Player extends GameEntity implements Comparable<Player> {
         view.updateZone(zone);
     }
 
+    public void updateAllZonesForView() {
+        for (PlayerZone zone : zones.values()) {
+            updateZoneForView(zone);
+        }
+    }
+
     public final CardCollectionView getCardsIn(final ZoneType zoneType) {
         return getCardsIn(zoneType, true);
     }
@@ -2493,6 +2500,8 @@ public class Player extends GameEntity implements Comparable<Player> {
         setLibrarySearched(0);
         setNumManaConversion(0);
 
+        setCommitedCrimeThisTurn(0);
+
         damageReceivedThisTurn.clear();
         planeswalkedToThisTurn.clear();
 
@@ -2508,20 +2517,6 @@ public class Player extends GameEntity implements Comparable<Player> {
     public boolean canCastSorcery() {
         PhaseHandler now = game.getPhaseHandler();
         return now.isPlayerTurn(this) && now.getPhase().isMain() && game.getStack().isEmpty();
-    }
-
-    //NOTE: for conditions the stack must only have the sa being checked
-    public boolean couldCastSorcery(final SpellAbility sa) {
-        final Card source = sa.getRootAbility().getHostCard();
-
-        for (final Card card : game.getCardsIn(ZoneType.Stack)) {
-            if (!card.equals(source)) {
-                return false;
-            }
-        }
-
-        PhaseHandler now = game.getPhaseHandler();
-        return now.isPlayerTurn(this) && now.getPhase().isMain();
     }
 
     public final PlayerController getController() {
@@ -2599,6 +2594,10 @@ public class Player extends GameEntity implements Comparable<Player> {
         if (controller != null) {
             throw new IllegalStateException("Controller creator already assigned");
         }
+        dangerouslySetController(ctrlr);
+    }
+
+    public final void dangerouslySetController(PlayerController ctrlr) {
         controller = ctrlr;
         updateAvatar();
         updateSleeve();
@@ -3793,5 +3792,22 @@ public class Player extends GameEntity implements Comparable<Player> {
                 drawCards(1, sa, params);
             }
         }
+    }
+
+    public void commitCrime() {
+        //boolean firstTime = this.commitedCrimeThisTurn == 0;
+        committedCrimeThisTurn++;
+
+        // Run triggers
+        final Map<AbilityKey, Object> runParams = AbilityKey.mapFromPlayer(this);
+        game.getTriggerHandler().runTrigger(TriggerType.CommitCrime, runParams, false);
+
+    }
+
+    public int getCommittedCrimeThisTurn() {
+        return committedCrimeThisTurn;
+    }
+    public void setCommitedCrimeThisTurn(int v) {
+        committedCrimeThisTurn = v;
     }
 }

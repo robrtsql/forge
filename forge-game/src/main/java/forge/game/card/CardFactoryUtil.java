@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -76,6 +77,7 @@ import forge.game.spellability.SpellPermanent;
 import forge.game.spellability.TargetRestrictions;
 import forge.game.staticability.StaticAbility;
 import forge.game.staticability.StaticAbilityCantBeCast;
+import forge.game.staticability.StaticAbilityPlotZone;
 import forge.game.trigger.Trigger;
 import forge.game.trigger.TriggerHandler;
 import forge.game.zone.ZoneType;
@@ -509,9 +511,9 @@ public class CardFactoryUtil {
         for (Card c : cards) {
             for (KeywordInterface inst : c.getKeywords()) {
                 final String k = inst.getOriginal();
-                if (k.endsWith("walk")) {
+                if (inst.getKeyword().equals(Keyword.LANDWALK)) {
                     landkw.add(k);
-                } else if (k.startsWith("Protection")) {
+                } else if (inst.getKeyword().equals(Keyword.PROTECTION)) {
                     protectionkw.add(k);
                     for (byte col : MagicColor.WUBRG) {
                         final String colString = MagicColor.toLongString(col);
@@ -520,9 +522,9 @@ public class CardFactoryUtil {
                             protectionColorkw.add(protString);
                         }
                     }
-                } else if (k.startsWith("Hexproof")) {
+                } else if (inst.getKeyword().equals(Keyword.HEXPROOF)) {
                     hexproofkw.add(k);
-                } else if (k.startsWith("Trample")) {
+                } else if (inst.getKeyword().equals(Keyword.TRAMPLE)) {
                     tramplekw.add(k);
                 } else {
                     allkw.add(k.toLowerCase());
@@ -3253,7 +3255,6 @@ public class CardFactoryUtil {
 
             final SpellAbility sa = AbilityFactory.getAbility(abilityStr.toString(), card);
             sa.setIntrinsic(intrinsic);
-            sa.setAlternativeCost(AlternativeCost.Outlast);
             inst.addSpellAbility(sa);
         } else if (keyword.startsWith("Overload")) {
             final String[] k = keyword.split(":");
@@ -3299,6 +3300,58 @@ public class CardFactoryUtil {
             newSA.setIntrinsic(intrinsic);
             newSA.setAlternativeCost(AlternativeCost.Overload);
             inst.addSpellAbility(newSA);
+        } else if (keyword.startsWith("Plot")) {
+            final String[] k = keyword.split(":");
+            final String manacost = k[1];
+
+            final SpellAbility plot = new AbilityStatic(card.getCard(), new Cost(manacost, false), null) {
+                @Override
+                public boolean canPlay() {
+                    // Reset the ZoneCheck
+                    getRestrictions().setZone(ZoneType.Hand);
+
+                    // add Extra Zone Check for Fblthp
+                    if (StaticAbilityPlotZone.plotZone(getHostCard())) {
+                        getRestrictions().setZone(getHostCard().getLastKnownZone().getZoneType());
+                    }
+
+                    if (!getRestrictions().canPlay(getHostCard(), this)) {
+                        return false;
+                    }
+
+                    return true;
+                }
+
+                @Override
+                public boolean isPlotting() {
+                    return true;
+                }
+
+                @Override
+                public void resolve() {
+                    final Game game = getHostCard().getGame();
+                    Map<AbilityKey, Object> moveParams = AbilityKey.newMap();
+                    CardZoneTable zoneMovements = AbilityKey.addCardZoneTableParams(moveParams, this);
+
+                    final Card c = game.getAction().exile(getHostCard(), this, moveParams);
+                    zoneMovements.triggerChangesZoneAll(game, this);
+
+                    c.setPlotted(true);
+
+                    // TODO add GameEvent
+                }
+            };
+
+            final StringBuilder sbDesc = new StringBuilder();
+            sbDesc.append("Plot (").append(inst.getReminderText()).append(")");
+            plot.setDescription(sbDesc.toString());
+            plot.putParam("Secondary", "True");
+
+            plot.setCardState(card);
+
+            plot.getRestrictions().setSorcerySpeed(true);
+            plot.setIntrinsic(intrinsic);
+            inst.addSpellAbility(plot);
         } else if (keyword.startsWith("Prototype")) {
             final String[] k = keyword.split(":");
             if (k.length < 4) {
@@ -3608,6 +3661,9 @@ public class CardFactoryUtil {
                     "CostDesc$ Crew " + power + " (Tap any number of creatures you control with total power " + power +
                     " or more: | Crew$ True | Secondary$ True | Defined$ Self | Types$ Artifact,Creature | " +
                     "SpellDescription$ CARDNAME becomes an artifact creature until end of turn.)";
+            if (k.length > 2) {
+                effect += " | " + k[2];
+            }
 
             final SpellAbility sa = AbilityFactory.getAbility(effect, card);
             sa.setIntrinsic(intrinsic);
@@ -3785,7 +3841,7 @@ public class CardFactoryUtil {
             StaticAbility st = StaticAbility.create(effect, state.getCard(), state, intrinsic);
             inst.addStaticAbility(st);
         } else if (keyword.equals("Defender")) {
-            String effect = "Mode$ CantAttack | ValidCard$ Card.Self | DefenderKeyword$ True | Secondary$ True";
+            String effect = "Mode$ CantAttack | ValidCard$ Card.Self | Secondary$ True";
             inst.addStaticAbility(StaticAbility.create(effect, state.getCard(), state, intrinsic));
         } else if (keyword.equals("Devoid")) {
             String effect = "Mode$ Continuous | EffectZone$ All | Affected$ Card.Self" +
@@ -3835,7 +3891,7 @@ public class CardFactoryUtil {
                 sbValid.append("| ValidSource$ ").append(k[1]);
             }
 
-            String effect = "Mode$ CantTarget | Hexproof$ True | ValidCard$ Card.Self | Secondary$ True"
+            String effect = "Mode$ CantTarget | ValidCard$ Card.Self | Secondary$ True"
                     + sbValid.toString() + " | Activator$ Opponent | Description$ "
                     + sbDesc.toString() + " (" + inst.getReminderText() + ")";
             inst.addStaticAbility(StaticAbility.create(effect, state.getCard(), state, intrinsic));
@@ -3846,6 +3902,13 @@ public class CardFactoryUtil {
         } else if (keyword.equals("Intimidate")) {
             String effect = "Mode$ CantBlockBy | ValidAttacker$ Creature.Self | ValidBlocker$ Creature.nonArtifact+notSharesColorWith | Secondary$ True " +
                     " | Description$ Intimidate ( " + inst.getReminderText() + ")";
+            inst.addStaticAbility(StaticAbility.create(effect, state.getCard(), state, intrinsic));
+        } else if (keyword.startsWith("Landwalk")) {
+            final String[] k = keyword.split(":");
+            String valid = k[1];
+            String desc = k[k.length > 2 ? 2 : 1].toLowerCase(Locale.ROOT);
+            String effect = "Mode$ CantBlockBy | ValidAttacker$ Creature.Self | ValidDefender$ Player.controls" + valid +
+                    " | Description$ " + StringUtils.capitalize(desc) + "walk (" + inst.getReminderText() + ")";
             inst.addStaticAbility(StaticAbility.create(effect, state.getCard(), state, intrinsic));
         } else if (keyword.equals("Living metal")) {
             String effect = "Mode$ Continuous | Affected$ Card.Self | AddType$ Creature | Condition$ PlayerTurn | Secondary$ True";
@@ -3895,7 +3958,7 @@ public class CardFactoryUtil {
                     " | Description$ Chapter abilities of this Saga can't trigger the turn it entered the battlefield unless it has exactly the number of lore counters on it specified in the chapter symbol of that ability.";
             inst.addStaticAbility(StaticAbility.create(effect, state.getCard(), state, intrinsic));
         } else if (keyword.equals("Shroud")) {
-            String effect = "Mode$ CantTarget | Shroud$ True | ValidCard$ Card.Self | Secondary$ True"
+            String effect = "Mode$ CantTarget | ValidCard$ Card.Self | Secondary$ True"
                     + " | Description$ Shroud (" + inst.getReminderText() + ")";
             inst.addStaticAbility(StaticAbility.create(effect, state.getCard(), state, intrinsic));
         } else if (keyword.equals("Skulk")) {
